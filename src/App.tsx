@@ -143,7 +143,7 @@ export default function App() {
 
   // Spec Drawer
   const [isSpecsOpen, setIsSpecsOpen] = useState(false);
-  const [activeSpecTab, setActiveSpecTab] = useState<'schemas' | 'routes' | 'structure' | 'setup'>('schemas');
+  const [activeSpecTab, setActiveSpecTab] = useState<'schemas' | 'routes' | 'structure' | 'setup' | 'vercel'>('schemas');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Toast
@@ -163,7 +163,7 @@ export default function App() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Initial Fetch
+  // Initial Fetch with safe JSON parsing (prevents syntax error if serverless route returns 404 HTML)
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -173,18 +173,29 @@ export default function App() {
         fetch('/api/health').catch(() => null),
       ]);
 
-      if (catsRes && catsRes.ok) {
-        const catData = await catsRes.json();
-        setCategories(catData);
-      }
-      if (lessonsRes && lessonsRes.ok) {
-        const lessonData = await lessonsRes.json();
-        setLessons(lessonData);
-      }
-      if (healthRes && healthRes.ok) {
-        const healthData = await healthRes.json();
-        setDbStatus(healthData.database);
-      }
+      const parseJsonSafe = async (res: Response | null) => {
+        if (!res || !res.ok) return null;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const text = await res.text();
+          if (text.trim().startsWith('<')) {
+            console.warn(
+              'API returned HTML instead of JSON. Ensure vercel.json is present in the repository root to route /api/* requests to server.ts.'
+            );
+          }
+          return null;
+        }
+        return await res.json();
+      };
+
+      const catData = await parseJsonSafe(catsRes);
+      if (catData) setCategories(catData);
+
+      const lessonData = await parseJsonSafe(lessonsRes);
+      if (lessonData) setLessons(lessonData);
+
+      const healthData = await parseJsonSafe(healthRes);
+      if (healthData) setDbStatus(healthData.database);
     } catch (err) {
       console.error('Fetch error:', err);
     } finally {
@@ -435,34 +446,67 @@ LessonSchema.index({ categoryId: 1, createdAt: -1 });
 
 export const Lesson = mongoose.models.Lesson || mongoose.model<ILesson>('Lesson', LessonSchema);`;
 
-  const directoryStructureCode = `mindvault/
+  const directoryStructureCode = `nelli-life/
+├── api/
+│   └── index.ts            # Serverless function entrypoint for Vercel
 ├── models/
 │   ├── Category.ts         # Mongoose schema for categories (with icon & accent color)
 │   └── Lesson.ts           # Mongoose schema for lessons (referenced to Category with tags)
 ├── lib/
 │   └── db.ts               # Resilient connection manager & hybrid DAO (Atlas + fallback)
 ├── src/
-│   ├── App.tsx             # Interactive MindVault Frontend with full CRUD & search
+│   ├── App.tsx             # Interactive Nelli-Life Frontend with full CRUD & search
 │   ├── main.tsx            # React entrypoint
 │   └── index.css           # Tailwind CSS configuration with Plus Jakarta Sans
-├── server.ts               # Express.js REST API + Vite middlewares integration
+├── server.ts               # Express.js REST API (standalone dev + exported for Vercel)
+├── vercel.json             # Vercel deployment routing (routes /api/* to backend serverless)
 ├── .env.example            # Environment variables template (MONGODB_URI, PORT)
 ├── package.json            # Node.js dependencies (express, mongoose, react, tailwindcss)
 ├── tsconfig.json           # TypeScript configuration
 └── index.html              # HTML shell with Google fonts and meta tags`;
 
+  const vercelJsonCode = `{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "server.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/server.ts"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}`;
+
   const runLocallyGuide = `# 1. Clone repository & install dependencies
-git clone <your-repo-url> mindvault
-cd mindvault
+git clone <your-repo-url> nelli-life
+cd nelli-life
 npm install
 
 # 2. Configure MongoDB connection in .env
 cp .env.example .env
 
 # Edit .env and paste your MongoDB Atlas connection string:
-# MONGODB_URI="mongodb+srv://<username>:<password>@cluster0.mongodb.net/mindvault?retryWrites=true&w=majority"
-# (Or local MongoDB: MONGODB_URI="mongodb://127.0.0.1:27017/mindvault")
-# Note: If MONGODB_URI is left blank, MindVault runs in local memory mode automatically!
+# MONGODB_URI="mongodb+srv://<username>:<password>@cluster0.mongodb.net/nellilife?retryWrites=true&w=majority"
+# (Or local MongoDB: MONGODB_URI="mongodb://127.0.0.1:27017/nellilife")
+# Note: If MONGODB_URI is left blank, Nelli-Life runs in local memory mode automatically!
 
 # 3. Start development server
 npm run dev
@@ -487,7 +531,7 @@ npm run dev
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-extrabold text-lg text-slate-900 tracking-tight">
-                    MindVault
+                    Nelli-Life
                   </span>
                   <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -922,6 +966,17 @@ npm run dev
                   <Terminal className="w-3.5 h-3.5" />
                   MongoDB Connection & Local Run
                 </button>
+                <button
+                  onClick={() => setActiveSpecTab('vercel')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition ${
+                    activeSpecTab === 'vercel'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Vercel Setup (vercel.json)
+                </button>
               </div>
 
               {/* TAB 1: Mongoose Schemas */}
@@ -1133,6 +1188,64 @@ npm run dev
                     <pre className="overflow-x-auto text-[11px] leading-relaxed text-slate-300">
                       {runLocallyGuide}
                     </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: Vercel Configuration & 404 Prevention */}
+              {activeSpecTab === 'vercel' && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-amber-900 leading-relaxed">
+                      <p className="font-bold mb-1">
+                        Why does Vercel return a 404 HTML page and JSON parsing error?
+                      </p>
+                      <p className="text-amber-800">
+                        Without a <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">vercel.json</code> file,
+                        Vercel assumes all requests belong to the static Vite frontend. When client code fetches{' '}
+                        <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">/api/categories</code>, Vercel falls back to serving{' '}
+                        <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">index.html</code>. Parsing that HTML with{' '}
+                        <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">res.json()</code> causes the dreaded syntax error.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-900 text-slate-200 rounded-xl font-mono text-xs">
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-indigo-400">vercel.json</span>
+                        <span className="text-[10px] text-slate-400">(Root directory)</span>
+                      </div>
+                      <button
+                        onClick={() => copyToClipboard(vercelJsonCode, 'vercel_json')}
+                        className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition"
+                      >
+                        {copiedKey === 'vercel_json' ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                    <pre className="overflow-x-auto text-[11px] leading-relaxed text-slate-300">
+                      {vercelJsonCode}
+                    </pre>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2 text-slate-700">
+                    <div className="font-bold text-slate-900 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Vercel Environment Variables Checklist:</span>
+                    </div>
+                    <ul className="list-disc pl-5 space-y-1 text-slate-600 text-[11px]">
+                      <li>
+                        Set <span className="font-mono font-bold text-slate-900">MONGODB_URI</span> in your Vercel Project Settings → Environment Variables.
+                      </li>
+                      <li>
+                        Set MongoDB Network Access to allow <span className="font-mono text-slate-900">0.0.0.0/0</span> (Anywhere) so Vercel Serverless IPs can query the database.
+                      </li>
+                    </ul>
                   </div>
                 </div>
               )}
