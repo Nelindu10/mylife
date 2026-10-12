@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -23,21 +23,20 @@ app.use((req, res, next) => {
 });
 
 // Serverless DB readiness check: ensure Mongoose is connected for incoming API requests
-app.use(async (req, _res, next) => {
-  if (req.path.startsWith('/api')) {
-    try {
-      await connectDB();
-    } catch (err) {
-      console.warn('DB connection attempt during serverless request:', err);
-    }
+app.use(async (_req, _res, next) => {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.warn('DB connection attempt during request:', err);
   }
   next();
 });
 
-// --- REST API ROUTES ---
+// --- REST API ROUTER ---
+const apiRouter = Router();
 
 // Health & Database Diagnostics
-app.get('/api/health', async (_req: Request, res: Response) => {
+apiRouter.get('/health', async (_req: Request, res: Response) => {
   try {
     const dbStatus = getDBStatus();
     const categories = await CategoryDAO.list();
@@ -57,7 +56,7 @@ app.get('/api/health', async (_req: Request, res: Response) => {
 });
 
 // Category CRUD
-app.get('/api/categories', async (_req: Request, res: Response) => {
+apiRouter.get('/categories', async (_req: Request, res: Response) => {
   try {
     const categories = await CategoryDAO.list();
     res.json(categories);
@@ -67,7 +66,7 @@ app.get('/api/categories', async (_req: Request, res: Response) => {
   }
 });
 
-app.post('/api/categories', async (req: Request, res: Response) => {
+apiRouter.post('/categories', async (req: Request, res: Response) => {
   try {
     const { name, description, icon, color } = req.body;
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -91,7 +90,7 @@ app.post('/api/categories', async (req: Request, res: Response) => {
   }
 });
 
-app.delete('/api/categories/:id', async (req: Request, res: Response) => {
+apiRouter.delete('/categories/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const deleted = await CategoryDAO.delete(id);
@@ -168,13 +167,24 @@ const handleDeleteLesson = async (req: Request, res: Response) => {
   }
 };
 
-app.get('/api/lessons', handleListLessons);
-app.post('/api/lessons', handleCreateLesson);
-app.delete('/api/lessons/:id', handleDeleteLesson);
+apiRouter.get('/lessons', handleListLessons);
+apiRouter.post('/lessons', handleCreateLesson);
+apiRouter.delete('/lessons/:id', handleDeleteLesson);
 
-app.get('/api/entries', handleListLessons);
-app.post('/api/entries', handleCreateLesson);
-app.delete('/api/entries/:id', handleDeleteLesson);
+apiRouter.get('/entries', handleListLessons);
+apiRouter.post('/entries', handleCreateLesson);
+apiRouter.delete('/entries/:id', handleDeleteLesson);
+
+// Mount API router strictly on /api
+app.use('/api', apiRouter);
+
+// Return JSON error for unmatched /api routes
+app.use('/api', (req: Request, res: Response) => {
+  res.status(404).json({
+    error: `API route not found: ${req.method} ${req.originalUrl || req.url}`,
+    path: req.path,
+  });
+});
 
 // Standalone Server Startup (for local dev & non-Vercel environments)
 async function startStandaloneServer() {
