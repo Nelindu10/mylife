@@ -448,7 +448,9 @@ export const Lesson = mongoose.models.Lesson || mongoose.model<ILesson>('Lesson'
 
   const directoryStructureCode = `nelli-life/
 ├── api/
-│   └── index.ts            # Serverless function entrypoint for Vercel
+│   ├── index.ts            # Serverless function entrypoint for Vercel (pure Express)
+│   └── [...path].ts        # Catch-all API router for Vercel Serverless
+├── app.ts                  # Pure Express backend API (ZERO Vite/Rolldown dependencies)
 ├── models/
 │   ├── Category.ts         # Mongoose schema for categories (with icon & accent color)
 │   └── Lesson.ts           # Mongoose schema for lessons (referenced to Category with tags)
@@ -458,10 +460,10 @@ export const Lesson = mongoose.models.Lesson || mongoose.model<ILesson>('Lesson'
 │   ├── App.tsx             # Interactive Nelli-Life Frontend with full CRUD & search
 │   ├── main.tsx            # React entrypoint
 │   └── index.css           # Tailwind CSS configuration with Plus Jakarta Sans
-├── server.ts               # Express.js REST API (standalone dev + exported for Vercel)
-├── vercel.json             # Vercel deployment routing (routes /api/* to backend serverless)
+├── server.ts               # Local dev server runner (dynamic Vite middlewares)
+├── vercel.json             # Vercel deployment routing (routes /api/* to serverless)
 ├── .env.example            # Environment variables template (MONGODB_URI, PORT)
-├── package.json            # Node.js dependencies (express, mongoose, react, tailwindcss)
+├── package.json            # Node.js dependencies (express, mongoose, bcryptjs, react)
 ├── tsconfig.json           # TypeScript configuration
 └── index.html              # HTML shell with Google fonts and meta tags`;
 
