@@ -1,0 +1,6 @@
+{
+  "name": "MindVault — Personal Knowledge Tracker",
+  "description": "Full-stack application to log, organize, and remember daily life lessons and software engineering tools with MongoDB, Express, and Tailwind CSS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
